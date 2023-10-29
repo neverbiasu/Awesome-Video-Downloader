@@ -1,0 +1,6 @@
+requests~=2.27.1
+tqdm~=4.64.0
+PyExecjs~=1.5.1
+gradio~=3.23.0
+urllib3~=1.26.15
+pytube==15.0.0
