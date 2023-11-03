@@ -14,7 +14,6 @@ Embark on an effortless video downloading journey with Awesome-Video-Downloader.
 ### Prerequisites
 Ensure you have the following installed on your local machine:
 - Python 3.x
-- conda
 
 ### Installation
 Clone the repository to your local machine:
