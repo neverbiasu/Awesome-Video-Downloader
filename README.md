@@ -1,4 +1,4 @@
-# Awesome-Video-Downloader
+# Awesome-Video-Downloader [![Awesome](https://awesome.re/badge.svg)](https://awesome.re) 
 ![example](https://github.com/neverbiasu/Awesome-Video-Downloader/blob/main/example.png)
 Embark on an effortless video downloading journey with Awesome-Video-Downloader.  This useful tool facilitates seamless downloads of watermark-free videos from an array of online platforms and apps directly via in-app or web links.   But that's not all!   It also empowers users to fetch captivating thumbnails from various videos.   The intuitive web UI, deployed through Gradio, ensures a hassle-free user experience, making video and thumbnail downloads just a click away.   As a continuous learner and avid developer, I am committed to enhancing the functionality of Awesome-Video-Downloader, with new features being rolled out progressively.   This project, although in its burgeoning stage, embodies a blend of innovative solutions, a tribute to the power of open-source projects and comprehensive documentation that it draws inspiration from.
 
