@@ -102,7 +102,6 @@ class BiliDownloader:
 
         logger.info("Start downloading")
         response = requests.get(video_url, headers=self.headers, stream=True)
-        # logger.debug(response) # Removing print(response)
 
         if response.status_code == 200:
             with open(output_path, "wb") as file:

@@ -29,5 +29,5 @@ pip install -r requirements.txt
 ### Run Video-Downloader
 Deploy WebUI:
 ```bash
-python WebUI.py
+python webui.py
 ```

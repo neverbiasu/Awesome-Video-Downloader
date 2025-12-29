@@ -10,6 +10,8 @@ from tqdm import tqdm
 # Configure logging
 logger = logging.getLogger(__name__)
 
+API_URL_TEMPLATE = "https://api16-normal-c-useast1a.tiktokv.com/aweme/v1/feed/?aweme_id={vid}"
+
 class TiktokDownloader:
     """
     Downloader for TikTok videos.
@@ -81,9 +83,7 @@ class TiktokDownloader:
             logger.error("Could not obtain video ID")
             return None
 
-        api_url = (
-            f"https://api16-normal-c-useast1a.tiktokv.com/aweme/v1/feed/?aweme_id={vid}"
-        )
+        api_url = API_URL_TEMPLATE.format(vid=vid)
         try:
             logger.info(f"Getting video data API: {api_url}")
             response = requests.get(
