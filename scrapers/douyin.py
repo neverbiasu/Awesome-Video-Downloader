@@ -34,14 +34,20 @@ class DouyinDownloader:
         """
         Extract video ID from URL.
         """
-        # Send request to get possible redirect URL (short URL might redirect to URL with video ID)
-        res = requests.get(url, headers=HEADERS, allow_redirects=False)
+        # Send request to get possible redirect URL
+        try:
+            res = requests.get(url, headers=HEADERS, allow_redirects=False)
+        except requests.RequestException as e:
+            logger.error(f"Error fetching URL {url}: {e}")
+            return {
+                "ok": False,
+                "status": "500",
+                "message": f"Network error: {e}",
+            }
 
         # Try to get redirected URL from headers
         try:
             vid_url = res.headers["Location"]
-
-            # Check if redirected URL contains 'user'
             if "user" in vid_url:
                 return {
                     "ok": False,
@@ -49,13 +55,15 @@ class DouyinDownloader:
                     "message": "Batch parsing of homepage is not currently support yet.",
                 }
         except KeyError:
-            vid_url = url  # If no redirect, use original URL
+            vid_url = url
 
         # Try to extract video ID from URL
         try:
+            # Look for video/12345 pattern
             vid_id = re.findall(r"video/(\d+)?", vid_url)[0]
         except IndexError:
             try:
+                # Look for modal_id=12345 pattern
                 vid_id = re.findall(r"modal_id=(\d+)", vid_url)[0]
             except IndexError:
                 return {
@@ -71,77 +79,75 @@ class DouyinDownloader:
         Generate X-Bogus signature for the URL.
         """
         query = urllib.parse.urlparse(url).query
-        # Use absolute path or relative to project root.
-        # Assuming run from root, but let's be safe and try to find it.
-        x_bogus_path = os.path.join(os.getcwd(), "X-Bogus.js")
-        if not os.path.exists(x_bogus_path):
-             # Fallback to look in the same dir if we were to move it later, but current stricture has it in root.
-             # Or check relative to this file? But this file is in scrapers/. X-Bogus.js is in root/.
-             # ../X-Bogus.js
-             x_bogus_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "X-Bogus.js")
+
+        # Try finding X-Bogus.js in various locations
+        possible_paths = [
+            os.path.join(os.getcwd(), "X-Bogus.js"),
+            os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "X-Bogus.js"),
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), "X-Bogus.js"),
+        ]
+
+        x_bogus_path = None
+        for path in possible_paths:
+            if os.path.exists(path):
+                x_bogus_path = path
+                break
+
+        if not x_bogus_path:
+            logger.error("X-Bogus.js not found.")
+            return url
 
         try:
             with open(x_bogus_path, encoding='utf-8') as f:
                 js_content = f.read()
-            xbogus = execjs.compile(js_content).call(
-                "sign", query, HEADERS["User-Agent"]
-            )
-            new_url = url + "&X-Bogus=" + xbogus
+
+            ctx = execjs.compile(js_content)
+            xbogus = ctx.call("sign", query, HEADERS["User-Agent"])
+            new_url = f"{url}&X-Bogus={xbogus}"
             return new_url
         except Exception as e:
             logger.error(f"Error generating X-Bogus signature: {e}")
-            # Return original url if signing fails, though likely will fail downstream
             return url
+
+    def sanitize_filename(self, filename: str) -> str:
+        """
+        Sanitize filename to remove illegal characters.
+        """
+        return re.sub(r'[\\/*?:"<>|]', "_", filename)
 
     def downloader(self, url: str) -> Optional[str]:
         """
         Download video from Douyin.
         """
-        # Regex
+        if not url:
+            return None
+
+        # Extract URL from text if needed
         pattern = re.compile(r"https?://v\.douyin\.com/[A-Za-z0-9]+/")
         match = pattern.search(url)
         if match:
             url = match.group(0)
-        else:
-             # Handle case where pattern matches nothing, though original code didn't handle it explicitly well
-             pass
 
-        # Parse video ID
         result = self.get_vid(url)
 
-        if result["ok"]:
-            vid_id = result["vid_id"]
-        else:
-            logger.error(f"Could not extract video ID, status code: {result['status']}")
+        if not result["ok"]:
+            logger.error(f"Could not extract video ID: {result.get('message')}")
             return None
 
+        vid_id = result["vid_id"]
         logger.info(f"Video ID: {vid_id}")
 
-        # Request Douyin Official API
         api_url = API_URL_TEMPLATE.format(vid_id=vid_id)
         api_url = self.generate_x_bogus_url(api_url)
 
         logger.info(f"Requesting Douyin Video API: {api_url}")
 
-        response = requests.get(api_url, headers=HEADERS)
-        if response is None:
-            logger.error("No response from API")
-            return None
-
-        data = None
-        if response.status_code == 200:
-            try:
-                data = json.loads(response.text)
-            except json.JSONDecodeError as e:
-                logger.error(f"JSON decode error: {e}")
-        else:
-            logger.error(f"Request failed, status code: {response.status_code}")
-            return None
-
-        if data is not None:
-            logger.info("Data read successfully")
-        else:
-            logger.error("Data not initialized")
+        try:
+            response = requests.get(api_url, headers=HEADERS)
+            response.raise_for_status()
+            data = response.json()
+        except Exception as e:
+            logger.error(f"Request failed: {e}")
             return None
 
         try:
@@ -151,15 +157,20 @@ class DouyinDownloader:
             if isinstance(video_name, list):
                  video_name = video_name[0]
 
-        except KeyError as e:
+            # Sanitize filename
+            video_name = self.sanitize_filename(str(video_name))
+
+        except (KeyError, IndexError, TypeError) as e:
             logger.error(f"Error parsing API response: {e}")
             return None
 
         # Download video
-        response = requests.get(video_url, headers=HEADERS, stream=True)
-        if response.status_code != 200:
-            logger.error(f"Request failed, status code: {response.status_code}")
-            return None
+        try:
+            response = requests.get(video_url, headers=HEADERS, stream=True)
+            response.raise_for_status()
+        except Exception as e:
+             logger.error(f"Error downloading video content: {e}")
+             return None
 
         total_size = int(response.headers.get("content-length", 0))
         output_path = f"{video_name}.mp4"
@@ -179,8 +190,8 @@ class DouyinDownloader:
         progress_bar.close()
 
         if total_size != 0 and progress_bar.n != total_size:
-            logger.error("Download error, please retry")
-        else:
-            logger.info(f"Download complete, saved as: {output_path}")
+            logger.error("Download incomplete")
+            return None
 
+        logger.info(f"Download complete, saved as: {output_path}")
         return output_path

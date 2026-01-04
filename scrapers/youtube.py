@@ -15,7 +15,7 @@ class YoutubeDownloader:
     Downloader for YouTube videos.
     """
     def __init__(self):
-        self.use_oauth = (False,)
+        self.use_oauth = False
         self.allow_oauth_cache = True
 
     def sanitize_filename(self, filename: str) -> str:
@@ -24,22 +24,21 @@ class YoutubeDownloader:
         """
         return re.sub(r'[\\/*?:"<>|]', "_", filename)
 
-    def downloader(self, url: str, output_thumbnail: bool = False) -> Union[Tuple[str, Optional[str]], Tuple[str, None]]:
+    def downloader(self, url: str, output_thumbnail: bool = False) -> Tuple[Optional[str], Optional[str]]:
         """
         Download video from YouTube.
         """
-        yt = YouTube(
-            url,
-            proxies="",
-            # use_oauth=self.use_oauth,
-            # allow_oauth_cache=self.allow_oauth_cache
-        )
-        yt.streams.filter(file_extension="mp4")
+        try:
+            # proxies="" can be problematic, better to rely on env vars or None
+            yt = YouTube(url)
+        except Exception as e:
+            logger.error(f"Error initializing YouTube object: {e}")
+            return None, None
 
         thumbnail_output = None
         if output_thumbnail:
-            thumbnail_url = yt.thumbnail_url
             try:
+                thumbnail_url = yt.thumbnail_url
                 thumbnail_data = requests.get(thumbnail_url).content
                 thumbnail_filename = f"{self.sanitize_filename(yt.title)}.jpg"
                 with open(thumbnail_filename, "wb") as f:
@@ -49,45 +48,26 @@ class YoutubeDownloader:
                 logger.error(f"Error downloading thumbnail: {e}")
 
         logger.info(f"Start downloading: {yt.title}")
-        if yt.title is None:
-            logger.warning("Title is None")
-        else:
-            pass # logger.info(yt.title) already logged above
 
-        try:
-            filename = f"{yt.title}.mp4"
-        except Exception:
-            filename = "None.mp4"
-
+        filename = f"{yt.title}.mp4" if yt.title else "youtube_video.mp4"
         filename = self.sanitize_filename(filename)
         logger.debug(f"Filename: {filename}")
 
         try:
-            stream = yt.streams.get_by_itag(22)
+            stream = yt.streams.filter(file_extension="mp4", progressive=True).get_highest_resolution()
             if stream is None:
-                 # Fallback if 720p (itag 22) is not available
+                 logger.warning("No progressive MP4 stream found, trying any stream")
                  stream = yt.streams.get_highest_resolution()
 
-            video_output = os.path.join(os.getcwd(), filename)
-            stream.download(output_path="", filename=filename) # Explicit filename to match our logic
-
-            # Original code logic for filename extension:
-            # file_type = "." + stream.mime_type.split("/")[1]
-            # filename = stream.default_filename if filename is None else filename + file_type
-            # But stream.download handles extension if not provided, or we force it.
-
-            logger.info(f"Download successful! Saved to: {video_output}")
-
-            if output_thumbnail:
+            if stream:
+                video_output = os.path.join(os.getcwd(), filename)
+                stream.download(output_path=os.getcwd(), filename=filename)
+                logger.info(f"Download successful! Saved to: {video_output}")
                 return video_output, thumbnail_output
             else:
-                return video_output, None
+                logger.error("No suitable stream found")
+                return None, thumbnail_output
 
         except Exception as e:
             logger.error(f"Error downloading video: {e}")
-            # Depending on how the caller expects, we might raise or return paths that don't exist?
-            # Existing code returned paths even if download might have failed (though it crashed on error).
-            # I will re-raise or return None? The signature implies returning paths.
-            # I'll let the exception propagate or return partial?
-            # Original code crashed on error. I will catch and re-raise to be safe or just log.
-            raise e
+            return None, thumbnail_output
