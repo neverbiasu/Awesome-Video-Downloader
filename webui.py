@@ -1,9 +1,6 @@
 import logging
 import gradio as gr
-from scrapers.douyin import DouyinDownloader
-from scrapers.bilibili import BiliDownloader
-from scrapers.tiktok import TiktokDownloader
-from scrapers.youtube import YoutubeDownloader
+from scrapers import DouyinDownloader, BiliDownloader, TiktokDownloader, YoutubeDownloader
 
 # Configure logging
 logging.basicConfig(
@@ -12,6 +9,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Theme configuration
 theme = gr.themes.Base(
     primary_hue="fuchsia",
     secondary_hue="rose",
@@ -24,69 +22,64 @@ theme = gr.themes.Base(
     ],
 )
 
-"""
-https://www.gradio.app/guides/theming-guide
-"""
-
-def create_interface():
+def create_interface() -> gr.TabbedInterface:
+    """
+    Creates and configures the Gradio interface.
+    """
     dydownloader = DouyinDownloader()
     douyin = gr.Interface(
         fn=dydownloader.downloader,
-        inputs=["text"],
-        title="Video Downloader",
-        outputs=gr.Video(label="Out", show_share_button=None),
+        inputs=[gr.Textbox(label="URL", placeholder="https://v.douyin.com/...")],
+        title="Douyin Downloader",
+        outputs=gr.Video(label="Output Video", show_share_button=False),
         theme=theme,
+        allow_flagging="never"
     )
 
     bidownloader = BiliDownloader()
     bili = gr.Interface(
         fn=bidownloader.downloader,
-        inputs=["text"],
-        title="Video Downloader",
-        outputs=gr.Video(label="Out", show_share_button=None),
+        inputs=[gr.Textbox(label="URL", placeholder="https://www.bilibili.com/video/BV...")],
+        title="Bilibili Downloader",
+        outputs=gr.Video(label="Output Video", show_share_button=False),
         theme=theme,
+        allow_flagging="never"
     )
 
     tkdownloader = TiktokDownloader()
     tk = gr.Interface(
         fn=tkdownloader.downloader,
-        inputs=["text"],
-        title="Video Downloader",
-        outputs=gr.Video(label="Out", show_share_button=None),
+        inputs=[gr.Textbox(label="URL", placeholder="https://www.tiktok.com/t/...")],
+        title="TikTok Downloader",
+        outputs=gr.Video(label="Output Video", show_share_button=False),
         theme=theme,
+        allow_flagging="never"
     )
 
     ytdownloader = YoutubeDownloader()
     youtube = gr.Interface(
         fn=ytdownloader.downloader,
-        inputs=[gr.Textbox(label="url"), gr.Checkbox(label="下载缩略图")],
-        title="Video Downloader",
+        inputs=[
+            gr.Textbox(label="URL", placeholder="https://www.youtube.com/watch?v=..."),
+            gr.Checkbox(label="Download Thumbnail")
+        ],
+        title="YouTube Downloader",
         outputs=[
-            gr.Video(label="Out", show_share_button=None),
-            gr.Image(label="image", show_share_button=None),
+            gr.Video(label="Output Video", show_share_button=False),
+            gr.Image(label="Thumbnail", show_share_button=False),
         ],
         theme=theme,
+        allow_flagging="never"
     )
 
     ui = gr.TabbedInterface(
         [douyin, bili, tk, youtube],
-        ["Douyin Video", "BiliBili Video", "TiktTok Video", "YouTube Video"],
+        ["Douyin", "BiliBili", "TikTok", "YouTube"],
         theme=theme,
+        title="Video Downloader"
     )
     return ui
 
 if __name__ == "__main__":
-    sample_url = "https://www.tiktok.com/t/ZT8kgbmeH/"
-    """
-    https://v.douyin.com/id9S5VTm/
-
-    https://www.bilibili.com/video/BV1bw411c7zv/?spm_id_from=333.934.0.0
-
-    https://www.youtube.com/watch?v=bef8QLNHubw
-
-    https://www.tiktok.com/t/ZT8kgbmeH/
-    """
-
     ui = create_interface()
-    # ui.launch(share = True)
-    ui.launch()
+    ui.queue().launch()

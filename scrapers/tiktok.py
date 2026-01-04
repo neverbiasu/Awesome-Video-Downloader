@@ -31,10 +31,10 @@ class TiktokDownloader:
         else:
             logger.info("Resolving TikTok share link...")
             try:
+                # proxies="" causes issues in some environments if no proxy is needed, better to just omit it or use None
                 response = requests.get(
                     url,
                     headers=self.headers,
-                    proxies="",
                     allow_redirects=False,
                     timeout=10,
                 )
@@ -44,10 +44,11 @@ class TiktokDownloader:
                     logger.info(f"Resolved URL: {url}")
                     return url
             except Exception as e:
-                logger.error("Failed to resolve URL!")
-                logger.error(e)
+                logger.error(f"Failed to resolve URL: {e}")
+                # Don't return None immediately, try to proceed with original URL might be safer?
+                # Or if resolution failed, maybe it's invalid. Original code returned None.
                 return None
-        return url # Return potentially unresolved url if no 301?
+        return url
 
     def get_vid(self, url: str) -> Optional[str]:
         """
@@ -65,7 +66,6 @@ class TiktokDownloader:
             elif "/v/" in url:
                 video_id = re.findall(r"/v/(\d+)", url)[0]
             else:
-                 # Should probably return None if not found
                  logger.warning("Could not find video ID pattern in URL")
                  return None
 
@@ -73,6 +73,12 @@ class TiktokDownloader:
         except Exception as e:
             logger.error(f"Error getting TikTok video ID: {e}")
             return None
+
+    def sanitize_filename(self, filename: str) -> str:
+        """
+        Sanitize filename to remove illegal characters.
+        """
+        return re.sub(r'[\\/*?:"<>|]', "_", filename)
 
     def downloader(self, url: str) -> Optional[str]:
         """
@@ -87,16 +93,11 @@ class TiktokDownloader:
         try:
             logger.info(f"Getting video data API: {api_url}")
             response = requests.get(
-                api_url, headers=self.headers, proxies="", timeout=10
+                api_url, headers=self.headers, timeout=10
             )
             response.raise_for_status()
 
-            # The original code parsed JSON directly from response.text
             data = response.json()
-
-            # Original code logic:
-            # video_url = response.json()["aweme_list"][0] # This looks wrong in original, overwritten immediately
-            # video_url = data["aweme_list"][0]["video"]["play_addr"]["url_list"][0]
 
             aweme_list = data.get("aweme_list", [])
             if not aweme_list:
@@ -105,19 +106,22 @@ class TiktokDownloader:
 
             video_url = aweme_list[0]["video"]["play_addr"]["url_list"][0]
 
-            # Download video
-            response = requests.get(video_url, headers=self.headers, stream=True)
-            if response.status_code != 200:
-                logger.error(f"Request failed, status code: {response.status_code}")
-                return None
-
             desc = aweme_list[0]["desc"]
             # Use regex to find words not containing #
             result = re.findall(r"\b(?!#)\w+\b", desc)
 
             # Join results to generate filename
             name = " ".join(result)
-            output_path = name + ".mp4"
+            if not name:
+                name = f"tiktok_{vid}"
+
+            name = self.sanitize_filename(name)
+            output_path = f"{name}.mp4"
+
+            # Download video
+            logger.info(f"Downloading video to {output_path}")
+            response = requests.get(video_url, headers=self.headers, stream=True)
+            response.raise_for_status()
 
             total_size = int(response.headers.get("content-length", 0))
             progress_bar = tqdm(total=total_size, unit="iB", unit_scale=True)
@@ -128,8 +132,13 @@ class TiktokDownloader:
                     file.write(chunk)
 
             progress_bar.close()
+
+            if total_size != 0 and progress_bar.n != total_size:
+                logger.error("Download incomplete")
+                return None
+
             return output_path
 
         except Exception as e:
             logger.error(f"Failed to get video info or download: {e}")
-            raise e
+            return None
